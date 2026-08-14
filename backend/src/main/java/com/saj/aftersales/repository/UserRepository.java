@@ -1,0 +1,25 @@
+package com.saj.aftersales.repository;
+
+import com.saj.aftersales.entity.UserEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface UserRepository extends JpaRepository<UserEntity, Long> {
+
+    /**
+     * Fetch-joins roles so the result is safe to read outside a transaction — needed by
+     * {@link com.saj.aftersales.auth.MockAuthProvider}, which runs in a security filter, not a
+     * {@code @Transactional} service method.
+     */
+    @Query("select distinct u from UserEntity u left join fetch u.roles where lower(u.email) = lower(:email)")
+    Optional<UserEntity> findByEmailIgnoreCaseWithRoles(@Param("email") String email);
+
+    boolean existsByEmailIgnoreCase(String email);
+
+    @Query("select distinct u from UserEntity u left join fetch u.roles order by u.displayName")
+    List<UserEntity> findAllWithRoles();
+}

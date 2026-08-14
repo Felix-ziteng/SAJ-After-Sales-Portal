@@ -1,0 +1,54 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-aftersales}
+      MYSQL_USER: ${DB_USERNAME:-aftersales}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-aftersales}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-aftersales_root}
+    ports:
+      - "${DB_HOST_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-aftersales_root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-aftersales}
+      DB_USERNAME: ${DB_USERNAME:-aftersales}
+      DB_PASSWORD: ${DB_PASSWORD:-aftersales}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-mock}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+
+volumes:
+  mysql_data:

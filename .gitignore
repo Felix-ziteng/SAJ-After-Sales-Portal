@@ -1,0 +1,30 @@
+# Env
+.env
+.env.local
+.env.*.local
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+frontend/.next/
+frontend/node_modules/
+npm-debug.log*
+
+# Java / Maven
+backend/target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
