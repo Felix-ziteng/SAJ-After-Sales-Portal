@@ -11,10 +11,11 @@ CREATE TABLE zendesk_tickets (
     CONSTRAINT fk_zendesk_tickets_customer FOREIGN KEY (customer_id) REFERENCES customers (id)
 ) ENGINE = InnoDB;
 
--- "year" is reserved on some engines (e.g. H2) when unquoted, so the column is seq_year.
+-- "year" is reserved on some engines (e.g. H2) when unquoted, and "last_value" is a reserved
+-- MySQL 8 window-function name — hence seq_year / last_number instead of the obvious names.
 CREATE TABLE request_number_sequences (
-    seq_year   SMALLINT PRIMARY KEY,
-    last_value INT NOT NULL DEFAULT 0
+    seq_year    INT PRIMARY KEY,
+    last_number INT NOT NULL DEFAULT 0
 ) ENGINE = InnoDB;
 
 CREATE TABLE service_requests (

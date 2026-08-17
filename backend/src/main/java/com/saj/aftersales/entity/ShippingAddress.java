@@ -47,4 +47,10 @@ public class ShippingAddress {
 
     @Column(nullable = false)
     private String contactPhone;
+
+    /** Customer-supplied, per request (D: no shared customer master data — see memory) — nullable
+     * because, like the rest of this row, it doesn't exist until the customer fills it in. */
+    private String companyName;
+
+    private String vatNumber;
 }

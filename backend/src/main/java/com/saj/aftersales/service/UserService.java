@@ -10,8 +10,12 @@ import com.saj.aftersales.entity.UserStatus;
 import com.saj.aftersales.exception.ConflictException;
 import com.saj.aftersales.exception.NotFoundException;
 import com.saj.aftersales.mapper.UserMapper;
+import com.saj.aftersales.repository.ApprovalRepository;
+import com.saj.aftersales.repository.AuditLogRepository;
 import com.saj.aftersales.repository.RoleRepository;
+import com.saj.aftersales.repository.ServiceRequestRepository;
 import com.saj.aftersales.repository.UserRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,19 +29,30 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final ServiceRequestRepository serviceRequestRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final ApprovalRepository approvalRepository;
     private final UserMapper userMapper;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserRepository userRepository, RoleRepository roleRepository, UserMapper userMapper) {
+    public UserService(UserRepository userRepository, RoleRepository roleRepository,
+                        ServiceRequestRepository serviceRequestRepository, AuditLogRepository auditLogRepository,
+                        ApprovalRepository approvalRepository, UserMapper userMapper,
+                        PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
+        this.serviceRequestRepository = serviceRequestRepository;
+        this.auditLogRepository = auditLogRepository;
+        this.approvalRepository = approvalRepository;
         this.userMapper = userMapper;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public List<UserDto> listUsers() {
         return userRepository.findAllWithRoles().stream().map(userMapper::toDto).toList();
     }
 
-    /** Used by {@link com.saj.aftersales.auth.MockAuthProvider} to resolve the caller's identity. */
+    /** Used by {@code PasswordAuthProvider} to resolve the caller's identity. */
     public Optional<UserDto> findActiveByEmail(String email) {
         return userRepository.findByEmailIgnoreCaseWithRoles(email)
                 .filter(user -> user.getStatus() == UserStatus.ACTIVE)
@@ -55,6 +70,7 @@ public class UserService {
         user.setDisplayName(request.displayName());
         user.setDepartment(request.department());
         user.setRoles(resolveRoles(request.roles()));
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
 
         return userMapper.toDto(userRepository.save(user));
     }
@@ -79,8 +95,35 @@ public class UserService {
             }
             user.setRoles(resolveRoles(request.roles()));
         }
+        if (request.newPassword() != null) {
+            user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+            user.setLockedAt(null);
+            user.setFailedLoginAttempts(0);
+        }
+        if (Boolean.TRUE.equals(request.unlock())) {
+            user.setLockedAt(null);
+            user.setFailedLoginAttempts(0);
+        }
 
         return userMapper.toDto(user);
+    }
+
+    @Transactional
+    public void deleteUser(Long id, Long currentUserId) {
+        UserEntity user = userRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("No user with id " + id));
+
+        if (id.equals(currentUserId)) {
+            throw new ConflictException("You cannot delete your own account while logged in as it");
+        }
+        if (serviceRequestRepository.existsByTechnician_Id(id) || auditLogRepository.existsByActorUser_Id(id)
+                || approvalRepository.existsByManager_Id(id)) {
+            throw new ConflictException(
+                    "Cannot delete " + user.getEmail() + " — they have request history. Set their status to "
+                            + "INACTIVE instead.");
+        }
+
+        userRepository.delete(user);
     }
 
     private Set<RoleEntity> resolveRoles(Set<Role> codes) {

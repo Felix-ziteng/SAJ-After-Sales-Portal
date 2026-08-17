@@ -2,15 +2,13 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api/client";
-import { clearMockUserEmail, setMockUserEmail } from "@/lib/auth/session";
 import type { AuthenticatedUser } from "@/lib/types/auth";
 
 interface AuthContextValue {
   user: AuthenticatedUser | null;
   loading: boolean;
-  signInAs: (email: string) => Promise<void>;
-  signOut: () => void;
-  refresh: () => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -19,25 +17,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const me = await apiFetch<AuthenticatedUser>("/api/auth/me");
-      setUser(me);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setUser(null);
-      } else {
-        throw err;
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetches the current session once on mount. Owns its own state updates (rather than
-  // delegating to `refresh`, which is also called imperatively from `signInAs`) so this
-  // effect can guard against setting state after unmount.
+  // Fetches the current session once on mount, from the HttpOnly cookie the browser already
+  // carries if a previous login is still valid. Guards against setting state after unmount.
   useEffect(() => {
     let cancelled = false;
 
@@ -61,22 +42,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signInAs = useCallback(
-    async (email: string) => {
-      setMockUserEmail(email);
-      await refresh();
-    },
-    [refresh],
-  );
-
-  const signOut = useCallback(() => {
-    clearMockUserEmail();
-    setUser(null);
+  const login = useCallback(async (email: string, password: string) => {
+    const me = await apiFetch<AuthenticatedUser>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    setUser(me);
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, loading, signInAs, signOut, refresh }}>{children}</AuthContext.Provider>
-  );
+  const signOut = useCallback(async () => {
+    try {
+      await apiFetch<void>("/api/auth/logout", { method: "POST" });
+    } finally {
+      setUser(null);
+    }
+  }, []);
+
+  return <AuthContext.Provider value={{ user, loading, login, signOut }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {

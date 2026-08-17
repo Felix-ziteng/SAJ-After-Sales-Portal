@@ -1,5 +1,6 @@
 package com.saj.aftersales.controller;
 
+import com.saj.aftersales.auth.CurrentUser;
 import com.saj.aftersales.dto.CreateUserRequest;
 import com.saj.aftersales.dto.UpdateUserRequest;
 import com.saj.aftersales.dto.UserDto;
@@ -8,6 +9,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -46,5 +49,11 @@ public class UserController {
     @PatchMapping("/{id}")
     public UserDto updateUser(@PathVariable Long id, @RequestBody UpdateUserRequest request) {
         return userService.updateUser(id, request);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id, Authentication authentication) {
+        userService.deleteUser(id, CurrentUser.id(authentication));
+        return ResponseEntity.noContent().build();
     }
 }

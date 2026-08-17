@@ -20,7 +20,8 @@ public class UserMapper {
                 entity.getDepartment(),
                 entity.getStatus(),
                 toRoleCodes(entity.getRoles()),
-                entity.getCreatedAt());
+                entity.getCreatedAt(),
+                entity.getLockedAt() != null);
     }
 
     private Set<Role> toRoleCodes(Set<RoleEntity> roles) {

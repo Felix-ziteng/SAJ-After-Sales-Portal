@@ -13,4 +13,4 @@ spring:
 
 app:
   auth:
-    provider: mock
+    provider: password

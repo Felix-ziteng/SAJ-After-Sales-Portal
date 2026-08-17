@@ -9,6 +9,8 @@ public record ShippingAddressDto(
         @NotBlank String postalCode,
         @NotBlank String country,
         @NotBlank String contactName,
-        @NotBlank String contactPhone
+        @NotBlank String contactPhone,
+        String companyName,
+        String vatNumber
 ) {
 }

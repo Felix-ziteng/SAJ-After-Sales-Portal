@@ -40,8 +40,21 @@ public class UserEntity {
 
     private String department;
 
-    /** Populated once real SSO (Microsoft Entra ID) resolves this user; unused by the mock provider. */
+    /** Reserved for a future real-SSO (Microsoft Entra ID) provider; unused by password auth. */
     private String ssoSubjectId;
+
+    /** BCrypt hash. Null until an Admin issues the account a password (D: no self-registration —
+     * see memory) — such an account simply can't log in yet. */
+    private String passwordHash;
+
+    /** Consecutive wrong-password attempts since the last success; reset to 0 on a successful
+     * login or an Admin-issued password reset/unlock. See {@code AuthService.MAX_FAILED_ATTEMPTS}. */
+    @Column(nullable = false)
+    private int failedLoginAttempts = 0;
+
+    /** Non-null once {@code failedLoginAttempts} hits the limit — locks the account out of login
+     * regardless of password correctness until an Admin clears it (no self-service unlock). */
+    private Instant lockedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)

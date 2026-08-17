@@ -13,6 +13,7 @@ public record UserDto(
         String department,
         UserStatus status,
         Set<Role> roles,
-        Instant createdAt
+        Instant createdAt,
+        boolean locked
 ) {
 }

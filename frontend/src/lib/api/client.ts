@@ -1,6 +1,4 @@
-import { getMockUserEmail } from "@/lib/auth/session";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 export class ApiError extends Error {
   constructor(
@@ -14,18 +12,13 @@ export class ApiError extends Error {
 }
 
 /**
- * Thin fetch wrapper every API call goes through. This is the one place that knows how the
- * current identity gets attached to a request — today that's the mock header, later a bearer
- * token from Entra ID. Callers never touch either directly.
+ * Thin fetch wrapper every API call goes through. Identity travels as an HttpOnly session
+ * cookie the browser attaches on its own (`credentials: "include"`) — nothing here reads or
+ * sets it, unlike the old mock-header days.
  */
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
-
-  const mockUser = getMockUserEmail();
-  if (mockUser) {
-    headers.set("X-Mock-User", mockUser);
-  }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,

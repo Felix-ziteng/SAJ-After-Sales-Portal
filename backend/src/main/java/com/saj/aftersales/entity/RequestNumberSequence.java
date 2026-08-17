@@ -19,6 +19,6 @@ public class RequestNumberSequence {
     @Column(name = "seq_year")
     private Integer year;
 
-    @Column(nullable = false)
+    @Column(name = "last_number", nullable = false)
     private int lastValue;
 }

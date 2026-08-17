@@ -42,11 +42,6 @@ public class ServiceRequest {
     @JoinColumn(name = "request_type_id", nullable = false)
     private RequestType requestType;
 
-    /** Denormalized from the ticket at creation time — see ER model decision in the Phase 0 doc. */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id", nullable = false)
-    private Customer customer;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "technician_id", nullable = false)
     private UserEntity technician;
@@ -72,6 +67,16 @@ public class ServiceRequest {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private RequestStatus status = RequestStatus.DRAFT;
+
+    /** The status to restore on resume — set only while {@link #status} is {@code ON_HOLD}. */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 32)
+    private RequestStatus heldFromStatus;
+
+    /** Set only while {@link #status} is {@code REJECTED} — decides what "Revise" does (D4). */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16)
+    private RejectionSource rejectionSource;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)

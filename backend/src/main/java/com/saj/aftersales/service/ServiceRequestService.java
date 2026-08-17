@@ -4,9 +4,11 @@ import com.saj.aftersales.auth.AuthenticatedUser;
 import com.saj.aftersales.dto.CreateServiceRequestRequest;
 import com.saj.aftersales.dto.RequestItemInput;
 import com.saj.aftersales.dto.ServiceRequestDto;
-import com.saj.aftersales.dto.ShippingAddressDto;
 import com.saj.aftersales.dto.UpdateServiceRequestRequest;
+import com.saj.aftersales.entity.Approval;
+import com.saj.aftersales.entity.ApprovalDecision;
 import com.saj.aftersales.entity.CatalogItem;
+import com.saj.aftersales.entity.CustomerConfirmation;
 import com.saj.aftersales.entity.RequestItem;
 import com.saj.aftersales.entity.RequestStatus;
 import com.saj.aftersales.entity.RequestType;
@@ -19,23 +21,35 @@ import com.saj.aftersales.exception.BadRequestException;
 import com.saj.aftersales.exception.ConflictException;
 import com.saj.aftersales.exception.NotFoundException;
 import com.saj.aftersales.mapper.ServiceRequestMapper;
+import com.saj.aftersales.repository.ApprovalRepository;
 import com.saj.aftersales.repository.CatalogItemRepository;
+import com.saj.aftersales.repository.CustomerConfirmationRepository;
 import com.saj.aftersales.repository.RequestItemRepository;
 import com.saj.aftersales.repository.RequestTypeRepository;
 import com.saj.aftersales.repository.ServiceRequestRepository;
 import com.saj.aftersales.repository.ShippingAddressRepository;
 import com.saj.aftersales.repository.UserRepository;
 import com.saj.aftersales.repository.ZendeskTicketRepository;
+import com.saj.aftersales.service.workflow.RequestWorkflowEngine;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @Transactional(readOnly = true)
 public class ServiceRequestService {
+
+    /** D3: Technician/Admin can still edit after Manager Approval — DRAFT is the pre-submission
+     * window, the rest is the post-approval window. PENDING_MANAGER_APPROVAL is deliberately
+     * excluded (nothing to edit while a decision is in flight) and so is REJECTED (go through
+     * {@code revise} first, which is what actually reopens editing). */
+    private static final Set<RequestStatus> EDITABLE_STATUSES = Set.of(
+            RequestStatus.DRAFT, RequestStatus.PENDING_CUSTOMER_CONFIRMATION,
+            RequestStatus.CUSTOMER_CONFIRMED, RequestStatus.READY_TO_SHIP, RequestStatus.ON_HOLD);
 
     private final ServiceRequestRepository serviceRequestRepository;
     private final ZendeskTicketRepository ticketRepository;
@@ -44,8 +58,14 @@ public class ServiceRequestService {
     private final UserRepository userRepository;
     private final RequestItemRepository requestItemRepository;
     private final ShippingAddressRepository shippingAddressRepository;
+    private final ShippingAddressService shippingAddressService;
+    private final CustomerConfirmationRepository customerConfirmationRepository;
+    private final CustomerConfirmationService customerConfirmationService;
     private final RequestNumberGenerator requestNumberGenerator;
     private final ServiceRequestMapper serviceRequestMapper;
+    private final AuditLogService auditLogService;
+    private final RequestWorkflowEngine workflowEngine;
+    private final ApprovalRepository approvalRepository;
 
     public ServiceRequestService(ServiceRequestRepository serviceRequestRepository,
                                   ZendeskTicketRepository ticketRepository,
@@ -54,8 +74,14 @@ public class ServiceRequestService {
                                   UserRepository userRepository,
                                   RequestItemRepository requestItemRepository,
                                   ShippingAddressRepository shippingAddressRepository,
+                                  ShippingAddressService shippingAddressService,
+                                  CustomerConfirmationRepository customerConfirmationRepository,
+                                  CustomerConfirmationService customerConfirmationService,
                                   RequestNumberGenerator requestNumberGenerator,
-                                  ServiceRequestMapper serviceRequestMapper) {
+                                  ServiceRequestMapper serviceRequestMapper,
+                                  AuditLogService auditLogService,
+                                  RequestWorkflowEngine workflowEngine,
+                                  ApprovalRepository approvalRepository) {
         this.serviceRequestRepository = serviceRequestRepository;
         this.ticketRepository = ticketRepository;
         this.requestTypeRepository = requestTypeRepository;
@@ -63,8 +89,14 @@ public class ServiceRequestService {
         this.userRepository = userRepository;
         this.requestItemRepository = requestItemRepository;
         this.shippingAddressRepository = shippingAddressRepository;
+        this.shippingAddressService = shippingAddressService;
+        this.customerConfirmationRepository = customerConfirmationRepository;
+        this.customerConfirmationService = customerConfirmationService;
         this.requestNumberGenerator = requestNumberGenerator;
         this.serviceRequestMapper = serviceRequestMapper;
+        this.auditLogService = auditLogService;
+        this.workflowEngine = workflowEngine;
+        this.approvalRepository = approvalRepository;
     }
 
     public List<ServiceRequestDto> listByTicket(String zendeskTicketId) {
@@ -72,8 +104,17 @@ public class ServiceRequestService {
                 .stream().map(this::toDto).toList();
     }
 
-    public List<ServiceRequestDto> listAll() {
-        return serviceRequestRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toDto).toList();
+    /** Shared backing query for the Warehouse/Manager/Technician/Overview dashboards — each is
+     * just this with a different default status selection applied client-side. Empty status/
+     * request-type lists mean "no filter," not "match nothing," since an empty multi-select reads
+     * as "show everything"; same for a blank ticket id. */
+    public List<ServiceRequestDto> search(List<RequestStatus> statuses, List<RequestTypeCode> requestTypes,
+                                           Instant from, Instant to, String ticketId) {
+        List<RequestStatus> normalizedStatuses = (statuses == null || statuses.isEmpty()) ? null : statuses;
+        List<RequestTypeCode> normalizedRequestTypes = (requestTypes == null || requestTypes.isEmpty()) ? null : requestTypes;
+        String normalizedTicketId = (ticketId == null || ticketId.isBlank()) ? null : ticketId.trim();
+        return serviceRequestRepository.search(normalizedStatuses, normalizedRequestTypes, from, to, normalizedTicketId)
+                .stream().map(this::toDto).toList();
     }
 
     public ServiceRequestDto getById(Long id) {
@@ -88,11 +129,12 @@ public class ServiceRequestService {
     private ServiceRequestDto toDto(ServiceRequest sr) {
         List<RequestItem> items = requestItemRepository.findByServiceRequest_Id(sr.getId());
         ShippingAddress address = shippingAddressRepository.findByServiceRequest_Id(sr.getId()).orElse(null);
-        return serviceRequestMapper.toDto(sr, items, address);
+        CustomerConfirmation confirmation = customerConfirmationRepository.findByServiceRequest_Id(sr.getId()).orElse(null);
+        return serviceRequestMapper.toDto(sr, items, address, confirmation);
     }
 
     @Transactional
-    public ServiceRequestDto create(CreateServiceRequestRequest request, AuthenticatedUser currentUser) {
+    public ServiceRequestDto create(CreateServiceRequestRequest request, AuthenticatedUser currentUser, String ipAddress) {
         ZendeskTicket ticket = ticketRepository.findByZendeskTicketId(request.zendeskTicketId())
                 .orElseThrow(() -> new NotFoundException("No ticket reference for " + request.zendeskTicketId()));
         RequestType requestType = requestTypeRepository.findByCode(request.requestType())
@@ -106,7 +148,6 @@ public class ServiceRequestService {
         sr.setRequestNumber(requestNumberGenerator.next());
         sr.setZendeskTicket(ticket);
         sr.setRequestType(requestType);
-        sr.setCustomer(ticket.getCustomer());
         sr.setTechnician(technician);
         sr.setProduct(product);
         sr.setSerialNumber(request.serialNumber());
@@ -115,23 +156,21 @@ public class ServiceRequestService {
         sr = serviceRequestRepository.save(sr);
 
         saveItems(sr, request.items());
-        saveShippingAddress(sr, request.shippingAddress());
+        shippingAddressService.upsert(sr, request.shippingAddress());
+
+        auditLogService.record(sr, currentUser, "CREATED", null, RequestStatus.DRAFT, null, ipAddress);
 
         return toDto(sr);
     }
 
     @Transactional
-    public ServiceRequestDto update(Long id, UpdateServiceRequestRequest request, AuthenticatedUser currentUser) {
+    public ServiceRequestDto update(Long id, UpdateServiceRequestRequest request, AuthenticatedUser currentUser, String ipAddress) {
         ServiceRequest sr = findEntity(id);
 
-        if (sr.getStatus() != RequestStatus.DRAFT) {
-            throw new ConflictException("Only DRAFT requests can be edited");
+        if (!EDITABLE_STATUSES.contains(sr.getStatus())) {
+            throw new ConflictException("A request in status " + sr.getStatus() + " cannot be edited");
         }
-        boolean isAdmin = currentUser.roles().contains("ADMIN");
-        boolean isCreator = sr.getTechnician().getId().equals(Long.valueOf(currentUser.id()));
-        if (!isAdmin && !isCreator) {
-            throw new AccessDeniedException("Only the creating Technician or an Admin can edit this request");
-        }
+        requireCreatorOrAdmin(sr, currentUser);
 
         if (request.productId() != null) {
             sr.setProduct(resolveProduct(sr.getRequestType().getCode(), request.productId()));
@@ -147,10 +186,132 @@ public class ServiceRequestService {
             saveItems(sr, request.items());
         }
         if (request.shippingAddress() != null) {
-            saveShippingAddress(sr, request.shippingAddress());
+            shippingAddressService.upsert(sr, request.shippingAddress());
         }
 
+        auditLogService.record(sr, currentUser, "UPDATED", sr.getStatus(), sr.getStatus(), null, ipAddress);
+
         return toDto(sr);
+    }
+
+    @Transactional
+    public ServiceRequestDto submit(Long id, AuthenticatedUser currentUser, String ipAddress) {
+        ServiceRequest sr = findEntity(id);
+        requireCreatorOrAdmin(sr, currentUser);
+        workflowEngine.submit(sr, currentUser, ipAddress);
+        ensureConfirmationIfNeeded(sr);
+        return toDto(sr);
+    }
+
+    @Transactional
+    public ServiceRequestDto cancel(Long id, String reason, AuthenticatedUser currentUser, String ipAddress) {
+        ServiceRequest sr = findEntity(id);
+        workflowEngine.cancel(sr, currentUser, reason, ipAddress);
+        return toDto(sr);
+    }
+
+    @Transactional
+    public ServiceRequestDto hold(Long id, String reason, AuthenticatedUser currentUser, String ipAddress) {
+        ServiceRequest sr = findEntity(id);
+        workflowEngine.hold(sr, currentUser, reason, ipAddress);
+        return toDto(sr);
+    }
+
+    @Transactional
+    public ServiceRequestDto resume(Long id, AuthenticatedUser currentUser, String ipAddress) {
+        ServiceRequest sr = findEntity(id);
+        workflowEngine.resume(sr, currentUser, ipAddress);
+        return toDto(sr);
+    }
+
+    @Transactional
+    public ServiceRequestDto approve(Long id, AuthenticatedUser currentUser, String ipAddress) {
+        ServiceRequest sr = findEntity(id);
+        recordApproval(sr, currentUser, ApprovalDecision.APPROVED, null);
+        workflowEngine.approve(sr, currentUser, ipAddress);
+        ensureConfirmationIfNeeded(sr);
+        return toDto(sr);
+    }
+
+    /** All-or-nothing, matching {@code receiveBatch}: if any id isn't PENDING_MANAGER_APPROVAL the
+     * whole call rolls back. Reject stays a per-request action (a batch reason wouldn't be
+     * meaningful across unrelated requests) — see memory. */
+    @Transactional
+    public List<ServiceRequestDto> approveBatch(List<Long> ids, AuthenticatedUser currentUser, String ipAddress) {
+        List<ServiceRequest> requests = ids.stream().map(this::findEntity).toList();
+        requests.forEach(sr -> {
+            recordApproval(sr, currentUser, ApprovalDecision.APPROVED, null);
+            workflowEngine.approve(sr, currentUser, ipAddress);
+            ensureConfirmationIfNeeded(sr);
+        });
+        return requests.stream().map(this::toDto).toList();
+    }
+
+    @Transactional
+    public ServiceRequestDto reject(Long id, String reason, AuthenticatedUser currentUser, String ipAddress) {
+        ServiceRequest sr = findEntity(id);
+        recordApproval(sr, currentUser, ApprovalDecision.REJECTED, reason);
+        workflowEngine.reject(sr, currentUser, reason, ipAddress);
+        return toDto(sr);
+    }
+
+    @Transactional
+    public ServiceRequestDto revise(Long id, AuthenticatedUser currentUser, String ipAddress) {
+        ServiceRequest sr = findEntity(id);
+        requireCreatorOrAdmin(sr, currentUser);
+        workflowEngine.revise(sr, currentUser, ipAddress);
+        if (sr.getStatus() == RequestStatus.PENDING_CUSTOMER_CONFIRMATION) {
+            customerConfirmationService.reopen(sr);
+        }
+        return toDto(sr);
+    }
+
+    @Transactional
+    public ServiceRequestDto receive(Long id, AuthenticatedUser currentUser, String ipAddress) {
+        ServiceRequest sr = findEntity(id);
+        workflowEngine.receive(sr, currentUser, ipAddress);
+        return toDto(sr);
+    }
+
+    /** All-or-nothing: if any id in the batch isn't READY_TO_SHIP, the whole call rolls back
+     * rather than silently skipping it — keeps the "what did this button just do" story simple. */
+    @Transactional
+    public List<ServiceRequestDto> receiveBatch(List<Long> ids, AuthenticatedUser currentUser, String ipAddress) {
+        List<ServiceRequest> requests = ids.stream().map(this::findEntity).toList();
+        requests.forEach(sr -> workflowEngine.receive(sr, currentUser, ipAddress));
+        return requests.stream().map(this::toDto).toList();
+    }
+
+    @Transactional
+    public ServiceRequestDto resendConfirmation(Long id, AuthenticatedUser currentUser) {
+        ServiceRequest sr = findEntity(id);
+        requireCreatorOrAdmin(sr, currentUser);
+        customerConfirmationService.resend(sr);
+        return toDto(sr);
+    }
+
+    private void ensureConfirmationIfNeeded(ServiceRequest sr) {
+        if (sr.getStatus() == RequestStatus.PENDING_CUSTOMER_CONFIRMATION) {
+            customerConfirmationService.ensure(sr);
+        }
+    }
+
+    private void recordApproval(ServiceRequest sr, AuthenticatedUser currentUser, ApprovalDecision decision, String reason) {
+        UserEntity manager = userRepository.getReferenceById(Long.valueOf(currentUser.id()));
+        Approval approval = new Approval();
+        approval.setServiceRequest(sr);
+        approval.setManager(manager);
+        approval.setDecision(decision);
+        approval.setReason(reason);
+        approvalRepository.save(approval);
+    }
+
+    private void requireCreatorOrAdmin(ServiceRequest sr, AuthenticatedUser currentUser) {
+        boolean isAdmin = currentUser.roles().contains("ADMIN");
+        boolean isCreator = sr.getTechnician().getId().equals(Long.valueOf(currentUser.id()));
+        if (!isAdmin && !isCreator) {
+            throw new AccessDeniedException("Only the creating Technician or an Admin can do this");
+        }
     }
 
     private CatalogItem resolveProduct(RequestTypeCode type, Long productId) {
@@ -180,23 +341,4 @@ public class ServiceRequestService {
         }
     }
 
-    private void saveShippingAddress(ServiceRequest sr, ShippingAddressDto dto) {
-        if (dto == null) {
-            return;
-        }
-        ShippingAddress address = shippingAddressRepository.findByServiceRequest_Id(sr.getId())
-                .orElseGet(() -> {
-                    ShippingAddress created = new ShippingAddress();
-                    created.setServiceRequest(sr);
-                    return created;
-                });
-        address.setLine1(dto.line1());
-        address.setLine2(dto.line2());
-        address.setCity(dto.city());
-        address.setPostalCode(dto.postalCode());
-        address.setCountry(dto.country());
-        address.setContactName(dto.contactName());
-        address.setContactPhone(dto.contactPhone());
-        shippingAddressRepository.save(address);
-    }
 }

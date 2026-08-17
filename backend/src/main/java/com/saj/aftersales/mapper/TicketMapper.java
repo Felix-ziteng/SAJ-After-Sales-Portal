@@ -9,7 +9,6 @@ public class TicketMapper {
 
     public TicketDto toDto(ZendeskTicket entity) {
         return new TicketDto(entity.getId(), entity.getZendeskTicketId(),
-                entity.getCustomer().getId(), entity.getCustomer().getName(),
                 entity.getSubject(), entity.getRequesterEmail(), entity.getCreatedAt());
     }
 }

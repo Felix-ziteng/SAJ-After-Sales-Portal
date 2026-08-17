@@ -1,5 +1,6 @@
 package com.saj.aftersales.dto;
 
+import com.saj.aftersales.entity.RejectionSource;
 import com.saj.aftersales.entity.RequestStatus;
 import com.saj.aftersales.entity.RequestTypeCode;
 
@@ -11,8 +12,6 @@ public record ServiceRequestDto(
         String requestNumber,
         String zendeskTicketId,
         RequestTypeCode requestType,
-        Long customerId,
-        String customerName,
         Long technicianId,
         String technicianName,
         Long productId,
@@ -20,8 +19,14 @@ public record ServiceRequestDto(
         String serialNumber,
         String reason,
         RequestStatus status,
+        RequestStatus heldFromStatus,
+        RejectionSource rejectionSource,
         List<RequestItemDto> items,
         ShippingAddressDto shippingAddress,
+        /** {@code /confirm/{token}} path, staff-visible whenever a confirmation record exists —
+         * see the plaintext-token decision in CustomerConfirmation. Null until one is created. */
+        String confirmationToken,
+        String confirmationStatus,
         Instant createdAt,
         Instant updatedAt,
         Instant submittedAt,

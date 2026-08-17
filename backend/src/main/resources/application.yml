@@ -22,8 +22,17 @@ server:
 
 app:
   auth:
-    # mock (default, dev only) | entra — selects the AuthProvider bean
-    provider: ${AUTH_PROVIDER:mock}
+    # password (default, real local username/password login) | entra — selects the AuthProvider bean
+    provider: ${AUTH_PROVIDER:password}
+    # Bootstrap Admin account — seeded once on first boot if it doesn't exist yet (see
+    # AdminAccountSeeder). Leave ADMIN_BOOTSTRAP_PASSWORD unset to skip seeding entirely.
+    bootstrap-admin:
+      email: ${ADMIN_BOOTSTRAP_EMAIL:felix}
+      password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+      display-name: ${ADMIN_BOOTSTRAP_DISPLAY_NAME:Admin}
+    # Session cookie's Secure flag — only safe to enable once the app is actually served over
+    # HTTPS (a plain-HTTP browser silently drops Secure cookies, which would break login).
+    cookie-secure: ${COOKIE_SECURE:false}
 
 management:
   endpoints:

@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -43,7 +45,12 @@ public class SecurityConfig {
                         (request, response, authException) -> response.sendError(HttpServletResponse.SC_UNAUTHORIZED)))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers("/api/auth/demo-users").permitAll()
+                        // Can't require a session to log in / can't require a valid one to log
+                        // out — both need to work from a logged-out state.
+                        .requestMatchers("/api/auth/login", "/api/auth/logout").permitAll()
+                        // The customer-facing confirmation flow (D6/memory): no staff login, no
+                        // account — the token in the URL is the entire identity proxy.
+                        .requestMatchers("/api/confirm/**").permitAll()
                         // Spring Boot's error view forwards internally to /error — e.g. when
                         // @PreAuthorize denies a request, AccessDeniedHandler's sendError(403)
                         // triggers this forward, which re-enters this same filter chain as a
@@ -53,6 +60,11 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 );
         return http.build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 
     @Bean

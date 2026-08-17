@@ -10,6 +10,7 @@ export interface User {
   status: UserStatus;
   roles: Role[];
   createdAt: string;
+  locked: boolean;
 }
 
 export interface CreateUserRequest {
@@ -17,6 +18,7 @@ export interface CreateUserRequest {
   displayName: string;
   department?: string;
   roles: Role[];
+  password: string;
 }
 
 export interface UpdateUserRequest {
@@ -24,4 +26,6 @@ export interface UpdateUserRequest {
   department?: string;
   status?: UserStatus;
   roles?: Role[];
+  newPassword?: string;
+  unlock?: boolean;
 }

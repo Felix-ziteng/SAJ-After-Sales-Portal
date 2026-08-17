@@ -29,8 +29,12 @@ services:
       DB_NAME: ${DB_NAME:-aftersales}
       DB_USERNAME: ${DB_USERNAME:-aftersales}
       DB_PASSWORD: ${DB_PASSWORD:-aftersales}
-      AUTH_PROVIDER: ${AUTH_PROVIDER:-mock}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-password}
       JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-felix}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      ADMIN_BOOTSTRAP_DISPLAY_NAME: ${ADMIN_BOOTSTRAP_DISPLAY_NAME:-Admin}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     healthcheck:
