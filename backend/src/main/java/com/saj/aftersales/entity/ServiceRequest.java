@@ -46,10 +46,12 @@ public class ServiceRequest {
     @JoinColumn(name = "technician_id", nullable = false)
     private UserEntity technician;
 
-    /** The replacement product for a Replacement request; unused by Parts. */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id")
-    private CatalogItem product;
+    /** Replacement product identity for a Replacement request, typed by the Technician rather
+     * than picked from a shared catalog — unused by Parts. {@code itemCode} is optional,
+     * {@code model} is required (enforced in {@code ServiceRequestService}, not here, since it
+     * depends on {@code requestType}). */
+    private String itemCode;
+    private String model;
 
     /** Set only when this request was opened as a reopen of a completed one (D15). */
     @ManyToOne(fetch = FetchType.LAZY)

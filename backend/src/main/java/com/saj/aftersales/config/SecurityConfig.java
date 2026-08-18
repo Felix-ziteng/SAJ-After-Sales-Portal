@@ -3,6 +3,7 @@ package com.saj.aftersales.config;
 import com.saj.aftersales.auth.AuthContextFilter;
 import com.saj.aftersales.auth.AuthProvider;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -26,9 +27,12 @@ import java.util.List;
 public class SecurityConfig {
 
     private final AuthProvider authProvider;
+    private final List<String> corsAllowedOrigins;
 
-    public SecurityConfig(AuthProvider authProvider) {
+    public SecurityConfig(AuthProvider authProvider,
+                           @Value("${app.cors.allowed-origins:http://localhost:3000}") List<String> corsAllowedOrigins) {
         this.authProvider = authProvider;
+        this.corsAllowedOrigins = corsAllowedOrigins;
     }
 
     @Bean
@@ -70,7 +74,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("http://localhost:3000"));
+        config.setAllowedOriginPatterns(corsAllowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

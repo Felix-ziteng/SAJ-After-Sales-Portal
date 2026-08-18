@@ -1,15 +1,19 @@
 package com.saj.aftersales.dto;
 
-import jakarta.validation.constraints.NotBlank;
-
+/**
+ * Every field is optional here — a Technician can create/edit a request without knowing the
+ * shipping details yet (the customer fills them in when confirming). Completeness is enforced
+ * client-side on the confirm page, not by bean validation, since "required" only applies to that
+ * one flow.
+ */
 public record ShippingAddressDto(
-        @NotBlank String line1,
+        String line1,
         String line2,
-        @NotBlank String city,
-        @NotBlank String postalCode,
-        @NotBlank String country,
-        @NotBlank String contactName,
-        @NotBlank String contactPhone,
+        String city,
+        String postalCode,
+        String country,
+        String contactName,
+        String contactPhone,
         String companyName,
         String vatNumber
 ) {

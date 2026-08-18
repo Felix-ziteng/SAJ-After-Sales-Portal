@@ -3,12 +3,13 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
-import { createServiceRequest, listCatalogItems, listRequestTypes } from "@/lib/api/domain";
+import { createServiceRequest, listRequestTypes } from "@/lib/api/domain";
 import { ItemRows } from "@/components/requests/ItemRows";
 import { ShippingAddressFields } from "@/components/requests/ShippingAddressFields";
 import { usePageTitle } from "@/lib/hooks/usePageTitle";
 import { useTranslation } from "@/lib/i18n/LocaleProvider";
-import type { CatalogItem, CreateServiceRequestRequest, RequestItemInput, RequestType, RequestTypeCode, ShippingAddress } from "@/lib/types/domain";
+import { isAddressBlank } from "@/lib/utils/shippingAddress";
+import type { CreateServiceRequestRequest, RequestItemInput, RequestType, RequestTypeCode, ShippingAddress } from "@/lib/types/domain";
 
 const EMPTY_ADDRESS: ShippingAddress = {
   line1: "",
@@ -51,9 +52,9 @@ function CreateRequestForm() {
   const ticketId = searchParams.get("ticketId") ?? "";
 
   const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [selectedType, setSelectedType] = useState<RequestTypeCode | null>(null);
-  const [productId, setProductId] = useState<number | "">("");
+  const [itemCode, setItemCode] = useState("");
+  const [model, setModel] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [reason, setReason] = useState("");
   const [items, setItems] = useState<RequestItemInput[]>([]);
@@ -64,11 +65,9 @@ function CreateRequestForm() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listRequestTypes(), listCatalogItems()])
-      .then(([types, items]) => {
-        if (cancelled) return;
-        setRequestTypes(types);
-        setCatalogItems(items);
+    listRequestTypes()
+      .then((types) => {
+        if (!cancelled) setRequestTypes(types);
       })
       .catch(() => undefined);
     return () => {
@@ -86,11 +85,12 @@ function CreateRequestForm() {
       const body: CreateServiceRequestRequest = {
         zendeskTicketId: ticketId,
         requestType: selectedType,
-        productId: selectedType === "REPLACEMENT" ? (productId === "" ? undefined : productId) : undefined,
+        itemCode: selectedType === "REPLACEMENT" ? itemCode || undefined : undefined,
+        model: selectedType === "REPLACEMENT" ? model || undefined : undefined,
         serialNumber: serialNumber || undefined,
         reason: reason || undefined,
         items: selectedType === "PARTS" ? items : undefined,
-        shippingAddress: address,
+        shippingAddress: isAddressBlank(address) ? undefined : address,
       };
       const created = await createServiceRequest(body);
       router.push(`/requests/${created.id}`);
@@ -123,25 +123,30 @@ function CreateRequestForm() {
           {selectedType === "REPLACEMENT" && (
             <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4">
               <h3 className="text-sm font-semibold text-slate-900">{t("newRequest.replacementDetailsHeading")}</h3>
-              <label className="text-sm font-medium text-slate-700">
-                {t("newRequest.replacementProductLabel")}
-                <select
-                  value={productId}
-                  onChange={(e) => setProductId(e.target.value ? Number(e.target.value) : "")}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                >
-                  <option value="">{t("newRequest.selectPlaceholder")}</option>
-                  {catalogItems.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.sku} — {c.name}
-                    </option>
-                  ))}
-                </select>
-                {fieldErrors.productId && <p className="mt-1 text-xs text-red-600">{fieldErrors.productId}</p>}
-              </label>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">
+                  {t("newRequest.itemCodeLabel")}
+                  <input
+                    value={itemCode}
+                    onChange={(e) => setItemCode(e.target.value)}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  {t("newRequest.modelLabel")}
+                  <input
+                    required
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                  />
+                  {fieldErrors.model && <p className="mt-1 text-xs text-red-600">{fieldErrors.model}</p>}
+                </label>
+              </div>
               <label className="text-sm font-medium text-slate-700">
                 {t("newRequest.serialNumberLabel")}
                 <input
+                  required
                   value={serialNumber}
                   onChange={(e) => setSerialNumber(e.target.value)}
                   className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
@@ -150,6 +155,7 @@ function CreateRequestForm() {
               <label className="text-sm font-medium text-slate-700">
                 {t("newRequest.faultReasonLabel")}
                 <textarea
+                  required
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   rows={3}
@@ -162,10 +168,11 @@ function CreateRequestForm() {
           {selectedType === "PARTS" && (
             <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4">
               <h3 className="text-sm font-semibold text-slate-900">{t("newRequest.partsHeading")}</h3>
-              <ItemRows items={items} catalogItems={catalogItems} onChange={setItems} />
+              <ItemRows items={items} onChange={setItems} />
               <label className="text-sm font-medium text-slate-700">
                 {t("newRequest.reasonLabel")}
                 <textarea
+                  required
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   rows={2}
@@ -176,7 +183,12 @@ function CreateRequestForm() {
           )}
 
           <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-semibold text-slate-900">{t("newRequest.shippingAddressHeading")}</h3>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">{t("newRequest.shippingAddressHeading")}</h3>
+              <p className="mt-0.5 text-xs text-slate-400">
+                {selectedType === "PARTS" ? t("newRequest.shippingAddressHintParts") : t("newRequest.shippingAddressHint")}
+              </p>
+            </div>
             <ShippingAddressFields address={address} onChange={setAddress} />
           </div>
 

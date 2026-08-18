@@ -6,6 +6,7 @@ import { RequireRole } from "@/lib/auth/RequireRole";
 import { ApiError } from "@/lib/api/client";
 import { searchServiceRequests } from "@/lib/api/domain";
 import { ALL_STATUSES, filtersToSearchParams, RequestFilters, type RequestFilterState } from "@/components/requests/RequestFilters";
+import { useOrigin } from "@/lib/hooks/useOrigin";
 import { usePageTitle } from "@/lib/hooks/usePageTitle";
 import { usePersistedState } from "@/lib/hooks/usePersistedState";
 import { useTranslation } from "@/lib/i18n/LocaleProvider";
@@ -22,7 +23,8 @@ const DEFAULT_FILTERS: RequestFilterState = { statuses: DEFAULT_STATUSES, reques
 function CopyLinkButton({ token }: { token: string }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
-  const url = typeof window !== "undefined" ? `${window.location.origin}/confirm/${token}` : `/confirm/${token}`;
+  const origin = useOrigin();
+  const url = `${origin}/confirm/${token}`;
 
   function handleCopy() {
     navigator.clipboard.writeText(url).then(() => {
@@ -55,7 +57,7 @@ function RequestRow({ request }: { request: ServiceRequest }) {
             {" · "}
             {statusLabel(request.status)}
           </p>
-          {request.productName && <p className="mt-1 text-sm text-slate-700">{t("common.product")}: {request.productName}</p>}
+          {request.model && <p className="mt-1 text-sm text-slate-700">{t("common.product")}: {request.model}</p>}
           {request.reason && <p className="mt-1 text-sm text-slate-500">{t("requestDetail.reasonLabel")}: {request.reason}</p>}
           <p className="mt-1 text-xs text-slate-400">
             {t("common.technicianCreatedLine", { name: request.technicianName, date: formatDate(request.createdAt) })}

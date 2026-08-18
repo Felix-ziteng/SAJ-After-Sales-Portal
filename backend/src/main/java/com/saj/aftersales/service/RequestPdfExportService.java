@@ -95,7 +95,9 @@ public class RequestPdfExportService {
                 document.add(sectionTitle("Replacement"));
                 PdfPTable replacement = fieldTable();
                 addField(replacement, "Product",
-                        sr.getProduct() != null ? sr.getProduct().getSku() + " - " + sr.getProduct().getName() : "-");
+                        sr.getModel() != null
+                                ? (sr.getItemCode() != null ? sr.getItemCode() + " - " : "") + sr.getModel()
+                                : "-");
                 addField(replacement, "Serial Number", nullSafe(sr.getSerialNumber()));
                 addField(replacement, "Fault / Reason", nullSafe(sr.getReason()));
                 document.add(replacement);
@@ -148,7 +150,7 @@ public class RequestPdfExportService {
         PdfPTable table = new PdfPTable(new float[]{2, 4, 1, 3});
         table.setWidthPercentage(100);
         table.setSpacingAfter(6);
-        for (String header : new String[]{"SKU", "Name", "Qty", "Notes"}) {
+        for (String header : new String[]{"Item Code", "Name", "Qty", "Notes"}) {
             PdfPCell cell = new PdfPCell(new Phrase(header, LABEL_FONT));
             cell.setBorderWidthLeft(0);
             cell.setBorderWidthRight(0);
@@ -157,8 +159,8 @@ public class RequestPdfExportService {
             table.addCell(cell);
         }
         for (RequestItem item : items) {
-            table.addCell(dataCell(item.getCatalogItem().getSku()));
-            table.addCell(dataCell(item.getCatalogItem().getName()));
+            table.addCell(dataCell(nullSafe(item.getItemCode())));
+            table.addCell(dataCell(item.getName()));
             table.addCell(dataCell(String.valueOf(item.getQuantity())));
             table.addCell(dataCell(nullSafe(item.getNotes())));
         }

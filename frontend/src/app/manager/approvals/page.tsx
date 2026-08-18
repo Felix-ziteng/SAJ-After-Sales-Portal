@@ -81,7 +81,7 @@ function ApprovalRow({
               {" · "}
               {statusLabel(request.status)}
             </p>
-            {request.productName && <p className="mt-1 text-sm text-slate-700">{t("common.product")}: {request.productName}</p>}
+            {request.model && <p className="mt-1 text-sm text-slate-700">{t("common.product")}: {request.model}</p>}
             {request.serialNumber && <p className="text-sm text-slate-700">{t("requestDetail.serialNumberLabel")}: {request.serialNumber}</p>}
             {request.reason && <p className="mt-1 text-sm text-slate-500">{t("requestDetail.reasonLabel")}: {request.reason}</p>}
             <p className="mt-1 text-xs text-slate-400">

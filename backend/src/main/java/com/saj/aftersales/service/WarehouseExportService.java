@@ -61,16 +61,14 @@ public class WarehouseExportService {
         String cause = sr.getReason();
 
         if (sr.getRequestType().getCode() == RequestTypeCode.REPLACEMENT) {
-            String modelCode = sr.getProduct() != null ? sr.getProduct().getSku() : null;
-            String modelName = sr.getProduct() != null ? sr.getProduct().getName() : null;
             return List.<String[]>of(new String[]{iva, tkt, tech, clientName, contact, fullAddress, number,
-                    modelCode, modelName, "1", sr.getSerialNumber(), cause});
+                    sr.getItemCode(), sr.getModel(), "1", sr.getSerialNumber(), cause});
         }
 
         List<RequestItem> items = requestItemRepository.findByServiceRequest_Id(sr.getId());
         return items.stream()
                 .map(item -> new String[]{iva, tkt, tech, clientName, contact, fullAddress, number,
-                        item.getCatalogItem().getSku(), item.getCatalogItem().getName(),
+                        item.getItemCode(), item.getName(),
                         String.valueOf(item.getQuantity()), null, cause})
                 .toList();
     }

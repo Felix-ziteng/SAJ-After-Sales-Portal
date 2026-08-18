@@ -73,6 +73,14 @@ export function AppHeader() {
               {t("nav.usersRoles")}
             </Link>
           )}
+          {(user.roles.includes("TECHNICIAN") ||
+            user.roles.includes("MANAGER") ||
+            user.roles.includes("WAREHOUSE") ||
+            user.roles.includes("ADMIN")) && (
+            <Link href="/help" className="hover:text-white">
+              {t("nav.help")}
+            </Link>
+          )}
         </nav>
       </div>
       <div className="flex items-center gap-3">

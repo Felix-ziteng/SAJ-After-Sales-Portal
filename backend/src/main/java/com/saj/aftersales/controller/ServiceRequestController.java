@@ -153,4 +153,10 @@ public class ServiceRequestController {
     public ServiceRequestDto resendConfirmation(@PathVariable Long id, Authentication authentication) {
         return serviceRequestService.resendConfirmation(id, CurrentUser.from(authentication));
     }
+
+    @PostMapping("/{id}/confirmation/request-address")
+    @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMIN')")
+    public ServiceRequestDto requestCustomerAddressLink(@PathVariable Long id, Authentication authentication) {
+        return serviceRequestService.requestCustomerAddressLink(id, CurrentUser.from(authentication));
+    }
 }

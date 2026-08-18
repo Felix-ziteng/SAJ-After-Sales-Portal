@@ -1,7 +1,6 @@
 import { API_BASE_URL, ApiError, apiFetch } from "@/lib/api/client";
 import type {
   AuditLogEntry,
-  CatalogItem,
   CreateServiceRequestRequest,
   CreateTicketRequest,
   RequestAnalytics,
@@ -12,8 +11,6 @@ import type {
   Ticket,
   UpdateServiceRequestRequest,
 } from "@/lib/types/domain";
-
-export const listCatalogItems = () => apiFetch<CatalogItem[]>("/api/catalog-items");
 
 export const listRequestTypes = () => apiFetch<RequestType[]>("/api/request-types");
 
@@ -82,6 +79,8 @@ export const reviseServiceRequest = (id: number) =>
 
 export const resendConfirmation = (id: number) =>
   apiFetch<ServiceRequest>(`/api/requests/${id}/confirmation/resend`, { method: "POST" });
+export const requestCustomerAddressLink = (id: number) =>
+  apiFetch<ServiceRequest>(`/api/requests/${id}/confirmation/request-address`, { method: "POST" });
 
 export const receiveServiceRequest = (id: number) =>
   apiFetch<ServiceRequest>(`/api/requests/${id}/receive`, { method: "POST" });

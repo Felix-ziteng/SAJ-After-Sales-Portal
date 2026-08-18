@@ -12,9 +12,9 @@ import {
   getAuditLog,
   getServiceRequest,
   holdServiceRequest,
-  listCatalogItems,
   receiveServiceRequest,
   rejectServiceRequest,
+  requestCustomerAddressLink,
   resendConfirmation,
   resumeServiceRequest,
   reviseServiceRequest,
@@ -25,10 +25,12 @@ import { ItemRows } from "@/components/requests/ItemRows";
 import { RequestFlowDiagram } from "@/components/requests/RequestFlowDiagram";
 import { ShippingAddressFields } from "@/components/requests/ShippingAddressFields";
 import { downloadBlob } from "@/lib/utils/download";
+import { isAddressBlank } from "@/lib/utils/shippingAddress";
+import { useOrigin } from "@/lib/hooks/useOrigin";
 import { usePageTitle } from "@/lib/hooks/usePageTitle";
 import { usePromptText } from "@/lib/confirm/ConfirmProvider";
 import { useTranslation } from "@/lib/i18n/LocaleProvider";
-import type { AuditLogEntry, CatalogItem, RequestItemInput, ServiceRequest, ShippingAddress } from "@/lib/types/domain";
+import type { AuditLogEntry, RequestItemInput, ServiceRequest, ShippingAddress } from "@/lib/types/domain";
 
 const WORKFLOW_ROLES = ["TECHNICIAN", "MANAGER", "WAREHOUSE", "ADMIN"];
 const TERMINAL_STATUSES = ["CANCELLED", "WAREHOUSE_RECEIVED"];
@@ -83,7 +85,8 @@ function ConfirmationLinkCard({
 }) {
   const { t, confirmationStatus: confirmationStatusLabel } = useTranslation();
   const [copied, setCopied] = useState(false);
-  const url = typeof window !== "undefined" ? `${window.location.origin}/confirm/${token}` : `/confirm/${token}`;
+  const origin = useOrigin();
+  const url = `${origin}/confirm/${token}`;
 
   function handleCopy() {
     navigator.clipboard.writeText(url).then(() => {
@@ -154,20 +157,19 @@ function Timeline({ entries }: { entries: AuditLogEntry[] }) {
 
 function EditModal({
   request,
-  catalogItems,
   onClose,
   onSaved,
 }: {
   request: ServiceRequest;
-  catalogItems: CatalogItem[];
   onClose: () => void;
   onSaved: (updated: ServiceRequest) => void;
 }) {
-  const [productId, setProductId] = useState<number | "">(request.productId ?? "");
+  const [itemCode, setItemCode] = useState(request.itemCode ?? "");
+  const [model, setModel] = useState(request.model ?? "");
   const [serialNumber, setSerialNumber] = useState(request.serialNumber ?? "");
   const [reason, setReason] = useState(request.reason ?? "");
   const [items, setItems] = useState<RequestItemInput[]>(
-    request.items.map((i) => ({ catalogItemId: i.catalogItemId, quantity: i.quantity, notes: i.notes ?? "" })),
+    request.items.map((i) => ({ itemCode: i.itemCode ?? "", name: i.name, quantity: i.quantity, notes: i.notes ?? "" })),
   );
   const [address, setAddress] = useState<ShippingAddress>(
     request.shippingAddress ?? { line1: "", city: "", postalCode: "", country: "", contactName: "", contactPhone: "" },
@@ -181,11 +183,12 @@ function EditModal({
     setError(null);
     try {
       const updated = await updateServiceRequest(request.id, {
-        productId: request.requestType === "REPLACEMENT" ? (productId === "" ? undefined : productId) : undefined,
+        itemCode: request.requestType === "REPLACEMENT" ? itemCode || undefined : undefined,
+        model: request.requestType === "REPLACEMENT" ? model || undefined : undefined,
         serialNumber,
         reason,
         items: request.requestType === "PARTS" ? items : undefined,
-        shippingAddress: address,
+        shippingAddress: isAddressBlank(address) ? undefined : address,
       });
       onSaved(updated);
     } catch (err) {
@@ -204,24 +207,29 @@ function EditModal({
         <div className="flex flex-col gap-4">
           {request.requestType === "REPLACEMENT" && (
             <>
-              <label className="text-sm font-medium text-slate-700">
-                {t("requestDetail.replacementProductLabel")}
-                <select
-                  value={productId}
-                  onChange={(e) => setProductId(e.target.value ? Number(e.target.value) : "")}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                >
-                  <option value="">{t("requestDetail.selectPlaceholder")}</option>
-                  {catalogItems.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.sku} — {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">
+                  {t("requestDetail.itemCodeLabel")}
+                  <input
+                    value={itemCode}
+                    onChange={(e) => setItemCode(e.target.value)}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  {t("requestDetail.modelLabel")}
+                  <input
+                    required
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                  />
+                </label>
+              </div>
               <label className="text-sm font-medium text-slate-700">
                 {t("requestDetail.serialNumberLabel")}
                 <input
+                  required
                   value={serialNumber}
                   onChange={(e) => setSerialNumber(e.target.value)}
                   className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
@@ -233,13 +241,14 @@ function EditModal({
           {request.requestType === "PARTS" && (
             <div>
               <p className="mb-1 text-sm font-medium text-slate-700">{t("requestDetail.partsLabel")}</p>
-              <ItemRows items={items} catalogItems={catalogItems} onChange={setItems} />
+              <ItemRows items={items} onChange={setItems} />
             </div>
           )}
 
           <label className="text-sm font-medium text-slate-700">
             {t("requestDetail.reasonLabel")}
             <textarea
+              required
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
@@ -276,7 +285,6 @@ function RequestDetail({ id }: { id: number }) {
   const { t, requestType: requestTypeLabel, formatDateTime } = useTranslation();
   const [request, setRequest] = useState<ServiceRequest | null>(null);
   usePageTitle(request?.requestNumber ?? `Request ${id}`);
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -287,11 +295,10 @@ function RequestDetail({ id }: { id: number }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getServiceRequest(id), listCatalogItems(), getAuditLog(id)])
-      .then(([req, items, log]) => {
+    Promise.all([getServiceRequest(id), getAuditLog(id)])
+      .then(([req, log]) => {
         if (cancelled) return;
         setRequest(req);
-        setCatalogItems(items);
         setAuditLog(log);
       })
       .catch((err) => {
@@ -441,15 +448,6 @@ function RequestDetail({ id }: { id: number }) {
               {t("common.edit")}
             </button>
           )}
-          {canSubmit && (
-            <button
-              onClick={() => runAction(() => submitServiceRequest(id))}
-              disabled={actionPending}
-              className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {t("requestDetail.submit")}
-            </button>
-          )}
           {canRevise && (
             <button
               onClick={() => runAction(() => reviseServiceRequest(id))}
@@ -544,13 +542,34 @@ function RequestDetail({ id }: { id: number }) {
           <Field label={t("requestDetail.fieldTechnician")} value={request.technicianName} />
           {request.requestType === "REPLACEMENT" && (
             <>
-              <Field label={t("requestDetail.fieldReplacementProduct")} value={request.productName} />
+              <Field label={t("requestDetail.fieldItemCode")} value={request.itemCode} />
+              <Field label={t("requestDetail.fieldModel")} value={request.model} />
               <Field label={t("requestDetail.fieldSerialNumber")} value={request.serialNumber} />
             </>
           )}
           <Field label={t("requestDetail.fieldReason")} value={request.reason} />
           <Field label={t("requestDetail.fieldCreated")} value={formatDateTime(request.createdAt)} />
         </div>
+
+        {canSubmit && (
+          <div className="mt-6 flex flex-col items-start gap-3 rounded-lg border-2 border-amber-300 bg-amber-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-amber-900">{t("requestDetail.draftSubmitPrompt")}</p>
+              <p className="mt-0.5 text-xs text-amber-700">
+                {request.requestType === "PARTS" && (!request.shippingAddress || isAddressBlank(request.shippingAddress))
+                  ? t("requestDetail.draftSubmitHintPartsAddressMissing")
+                  : t("requestDetail.draftSubmitHint")}
+              </p>
+            </div>
+            <button
+              onClick={() => runAction(() => submitServiceRequest(id))}
+              disabled={actionPending}
+              className="rounded-md bg-amber-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+            >
+              {t("requestDetail.submit")}
+            </button>
+          </div>
+        )}
 
         {request.confirmationToken && request.confirmationStatus ? (
           <ConfirmationLinkCard
@@ -559,10 +578,22 @@ function RequestDetail({ id }: { id: number }) {
             canResend={!!(isAdmin || isCreatorTechnician)}
             onResend={() => runAction(() => resendConfirmation(id))}
           />
+        ) : request.requestType === "REPLACEMENT" ? (
+          <div className="mt-6 rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
+            {t("requestDetail.noConfirmationYet")}
+          </div>
         ) : (
-          request.requestType === "REPLACEMENT" && (
-            <div className="mt-6 rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
-              {t("requestDetail.noConfirmationYet")}
+          request.requestType === "PARTS" && request.status === "DRAFT" && (isAdmin || isCreatorTechnician) && (
+            <div className="mt-6 rounded-lg border border-dashed border-slate-300 bg-white p-5">
+              <h2 className="text-sm font-semibold text-slate-900">{t("requestDetail.customerAddressLinkHeading")}</h2>
+              <p className="mt-1 text-sm text-slate-500">{t("requestDetail.customerAddressLinkHint")}</p>
+              <button
+                onClick={() => runAction(() => requestCustomerAddressLink(id))}
+                disabled={actionPending}
+                className="mt-3 rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {t("requestDetail.generateAddressLink")}
+              </button>
             </div>
           )
         )}
@@ -576,7 +607,7 @@ function RequestDetail({ id }: { id: number }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs tracking-wide text-slate-500 uppercase">
-                    <th className="pb-2">{t("requestDetail.tableSku")}</th>
+                    <th className="pb-2">{t("requestDetail.tableItemCode")}</th>
                     <th className="pb-2">{t("requestDetail.tableName")}</th>
                     <th className="pb-2">{t("requestDetail.tableQty")}</th>
                     <th className="pb-2">{t("requestDetail.tableNotes")}</th>
@@ -585,7 +616,7 @@ function RequestDetail({ id }: { id: number }) {
                 <tbody>
                   {request.items.map((item) => (
                     <tr key={item.id} className="border-t border-slate-100">
-                      <td className="py-1.5">{item.sku}</td>
+                      <td className="py-1.5">{item.itemCode}</td>
                       <td className="py-1.5">{item.name}</td>
                       <td className="py-1.5">{item.quantity}</td>
                       <td className="py-1.5 text-slate-500">{item.notes}</td>
@@ -626,7 +657,6 @@ function RequestDetail({ id }: { id: number }) {
       {editing && (
         <EditModal
           request={request}
-          catalogItems={catalogItems}
           onClose={() => setEditing(false)}
           onSaved={(updated) => {
             refresh(updated);

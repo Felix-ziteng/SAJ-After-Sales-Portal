@@ -7,7 +7,6 @@ import com.saj.aftersales.dto.ServiceRequestDto;
 import com.saj.aftersales.dto.UpdateServiceRequestRequest;
 import com.saj.aftersales.entity.Approval;
 import com.saj.aftersales.entity.ApprovalDecision;
-import com.saj.aftersales.entity.CatalogItem;
 import com.saj.aftersales.entity.CustomerConfirmation;
 import com.saj.aftersales.entity.RequestItem;
 import com.saj.aftersales.entity.RequestStatus;
@@ -22,7 +21,6 @@ import com.saj.aftersales.exception.ConflictException;
 import com.saj.aftersales.exception.NotFoundException;
 import com.saj.aftersales.mapper.ServiceRequestMapper;
 import com.saj.aftersales.repository.ApprovalRepository;
-import com.saj.aftersales.repository.CatalogItemRepository;
 import com.saj.aftersales.repository.CustomerConfirmationRepository;
 import com.saj.aftersales.repository.RequestItemRepository;
 import com.saj.aftersales.repository.RequestTypeRepository;
@@ -54,7 +52,6 @@ public class ServiceRequestService {
     private final ServiceRequestRepository serviceRequestRepository;
     private final ZendeskTicketRepository ticketRepository;
     private final RequestTypeRepository requestTypeRepository;
-    private final CatalogItemRepository catalogItemRepository;
     private final UserRepository userRepository;
     private final RequestItemRepository requestItemRepository;
     private final ShippingAddressRepository shippingAddressRepository;
@@ -70,7 +67,6 @@ public class ServiceRequestService {
     public ServiceRequestService(ServiceRequestRepository serviceRequestRepository,
                                   ZendeskTicketRepository ticketRepository,
                                   RequestTypeRepository requestTypeRepository,
-                                  CatalogItemRepository catalogItemRepository,
                                   UserRepository userRepository,
                                   RequestItemRepository requestItemRepository,
                                   ShippingAddressRepository shippingAddressRepository,
@@ -85,7 +81,6 @@ public class ServiceRequestService {
         this.serviceRequestRepository = serviceRequestRepository;
         this.ticketRepository = ticketRepository;
         this.requestTypeRepository = requestTypeRepository;
-        this.catalogItemRepository = catalogItemRepository;
         this.userRepository = userRepository;
         this.requestItemRepository = requestItemRepository;
         this.shippingAddressRepository = shippingAddressRepository;
@@ -142,14 +137,15 @@ public class ServiceRequestService {
         UserEntity technician = userRepository.findById(Long.valueOf(currentUser.id()))
                 .orElseThrow(() -> new NotFoundException("No user with id " + currentUser.id()));
 
-        CatalogItem product = resolveProduct(request.requestType(), request.productId());
+        validateModel(request.requestType(), request.model());
 
         ServiceRequest sr = new ServiceRequest();
         sr.setRequestNumber(requestNumberGenerator.next());
         sr.setZendeskTicket(ticket);
         sr.setRequestType(requestType);
         sr.setTechnician(technician);
-        sr.setProduct(product);
+        sr.setItemCode(request.itemCode());
+        sr.setModel(request.model());
         sr.setSerialNumber(request.serialNumber());
         sr.setReason(request.reason());
         sr.setStatus(RequestStatus.DRAFT);
@@ -172,8 +168,10 @@ public class ServiceRequestService {
         }
         requireCreatorOrAdmin(sr, currentUser);
 
-        if (request.productId() != null) {
-            sr.setProduct(resolveProduct(sr.getRequestType().getCode(), request.productId()));
+        if (request.model() != null) {
+            validateModel(sr.getRequestType().getCode(), request.model());
+            sr.setItemCode(request.itemCode());
+            sr.setModel(request.model());
         }
         if (request.serialNumber() != null) {
             sr.setSerialNumber(request.serialNumber());
@@ -198,9 +196,53 @@ public class ServiceRequestService {
     public ServiceRequestDto submit(Long id, AuthenticatedUser currentUser, String ipAddress) {
         ServiceRequest sr = findEntity(id);
         requireCreatorOrAdmin(sr, currentUser);
+        requireCompleteAddressForPartsSubmit(sr);
         workflowEngine.submit(sr, currentUser, ipAddress);
         ensureConfirmationIfNeeded(sr);
         return toDto(sr);
+    }
+
+    /** A REPLACEMENT request that's submitted with no shipping address still gets one — the
+     * customer fills it in at PENDING_CUSTOMER_CONFIRMATION. A PARTS request skips that step
+     * entirely (no manager approval, no customer confirmation — see {@code RequestType} seed
+     * data), so submit is the last moment a human can supply it before it becomes Warehouse's
+     * problem with nowhere to ship to. */
+    private void requireCompleteAddressForPartsSubmit(ServiceRequest sr) {
+        if (sr.getRequestType().getCode() != RequestTypeCode.PARTS) {
+            return;
+        }
+        ShippingAddress address = shippingAddressRepository.findByServiceRequest_Id(sr.getId()).orElse(null);
+        if (address == null || isBlank(address.getLine1()) || isBlank(address.getCity())
+                || isBlank(address.getPostalCode()) || isBlank(address.getCountry())
+                || isBlank(address.getContactName()) || isBlank(address.getContactPhone())
+                || isBlank(address.getVatNumber())) {
+            throw new BadRequestException(
+                    "A complete shipping address is required before submitting a Parts request — "
+                            + "unlike a Replacement, there's no customer confirmation step to collect it later.");
+        }
+    }
+
+    /** Lets a Technician/Admin hand a DRAFT Parts request's address-collection link to the
+     * customer, mirroring the Replacement flow's auto-issued confirmation link — Parts has no
+     * approval/confirmation gate of its own, so this is the only way to get that link out before
+     * Submit (which already blocks without a complete address, see
+     * {@link #requireCompleteAddressForPartsSubmit}). */
+    @Transactional
+    public ServiceRequestDto requestCustomerAddressLink(Long id, AuthenticatedUser currentUser) {
+        ServiceRequest sr = findEntity(id);
+        requireCreatorOrAdmin(sr, currentUser);
+        if (sr.getRequestType().getCode() != RequestTypeCode.PARTS) {
+            throw new BadRequestException("A customer address link can only be requested for a Parts request");
+        }
+        if (sr.getStatus() != RequestStatus.DRAFT) {
+            throw new ConflictException("A customer address link can only be requested while still a Draft");
+        }
+        customerConfirmationService.ensure(sr);
+        return toDto(sr);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     @Transactional
@@ -314,15 +356,10 @@ public class ServiceRequestService {
         }
     }
 
-    private CatalogItem resolveProduct(RequestTypeCode type, Long productId) {
-        if (type == RequestTypeCode.REPLACEMENT) {
-            if (productId == null) {
-                throw new BadRequestException("productId is required for a Replacement request");
-            }
-            return catalogItemRepository.findById(productId)
-                    .orElseThrow(() -> new NotFoundException("No catalog item with id " + productId));
+    private void validateModel(RequestTypeCode type, String model) {
+        if (type == RequestTypeCode.REPLACEMENT && (model == null || model.isBlank())) {
+            throw new BadRequestException("model is required for a Replacement request");
         }
-        return null;
     }
 
     private void saveItems(ServiceRequest sr, List<RequestItemInput> items) {
@@ -330,11 +367,10 @@ public class ServiceRequestService {
             return;
         }
         for (RequestItemInput input : items) {
-            CatalogItem catalogItem = catalogItemRepository.findById(input.catalogItemId())
-                    .orElseThrow(() -> new NotFoundException("No catalog item with id " + input.catalogItemId()));
             RequestItem item = new RequestItem();
             item.setServiceRequest(sr);
-            item.setCatalogItem(catalogItem);
+            item.setItemCode(input.itemCode());
+            item.setName(input.name());
             item.setQuantity(input.quantity());
             item.setNotes(input.notes());
             requestItemRepository.save(item);

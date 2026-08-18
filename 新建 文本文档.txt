@@ -1,0 +1,3 @@
+数据库密码：Kx7mQ2vN9pLwR4tZ
+数据库 root 密码：Hj3nB8xY6qFcE1sA
+管理员登录密码（ADMIN_BOOTSTRAP_PASSWORD，这个就是你以后登录网站用 felix 账号时的真实密码）：Vt5wG9mK2rXpN7hQ

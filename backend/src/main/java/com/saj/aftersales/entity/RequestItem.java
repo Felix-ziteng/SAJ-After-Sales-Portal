@@ -28,9 +28,11 @@ public class RequestItem {
     @JoinColumn(name = "service_request_id", nullable = false)
     private ServiceRequest serviceRequest;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "catalog_item_id", nullable = false)
-    private CatalogItem catalogItem;
+    /** Typed by the Technician rather than picked from a shared catalog. {@code itemCode} is
+     * optional; {@code name} is required (enforced via bean validation on the input DTO, since
+     * every parts line item unconditionally needs one). */
+    private String itemCode;
+    private String name;
 
     @Column(nullable = false)
     private int quantity;

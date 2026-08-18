@@ -28,7 +28,7 @@ function RequestSummary({ view }: { view: CustomerConfirmationView }) {
       <p className="font-medium text-slate-900">{view.requestNumber}</p>
       <p className="text-slate-600">{requestTypeLabel(view.requestType)}</p>
       <p className="text-slate-600">{t("confirmPage.ticketPrefix", { id: view.zendeskTicketId })}</p>
-      {view.productName && <p className="text-slate-600">{t("confirmPage.replacementPrefix", { name: view.productName })}</p>}
+      {view.model && <p className="text-slate-600">{t("confirmPage.replacementPrefix", { name: view.model })}</p>}
     </div>
   );
 }
@@ -97,7 +97,7 @@ function PendingForm({ token, view, onDecided }: { token: string; view: Customer
     agreed &&
     signatureName.trim().length > 0 &&
     address.line1 && address.city && address.postalCode && address.country && address.contactName && address.contactPhone &&
-    address.companyName && address.vatNumber;
+    address.vatNumber;
 
   function handleUsePrevious() {
     if (view.previousInfo) {
@@ -189,14 +189,16 @@ function PendingForm({ token, view, onDecided }: { token: string; view: Customer
           </label>
 
           <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={handleReject}
-              disabled={submitting}
-              className="flex-1 rounded-md border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >
-              {t("confirmPage.reject")}
-            </button>
+            {view.requestType !== "PARTS" && (
+              <button
+                type="button"
+                onClick={handleReject}
+                disabled={submitting}
+                className="flex-1 rounded-md border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {t("confirmPage.reject")}
+              </button>
+            )}
             <button
               type="submit"
               disabled={submitting || !canSubmit}

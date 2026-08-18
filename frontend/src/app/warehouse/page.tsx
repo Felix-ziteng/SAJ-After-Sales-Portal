@@ -63,7 +63,7 @@ function QueueRow({
               {statusLabel(request.status)}
               {request.shippingAddress?.companyName && ` · ${request.shippingAddress.companyName}`}
             </p>
-            {request.productName && <p className="mt-1 text-sm text-slate-700">{t("common.product")}: {request.productName}</p>}
+            {request.model && <p className="mt-1 text-sm text-slate-700">{t("common.product")}: {request.model}</p>}
             {request.shippingAddress && (
               <p className="mt-1 text-sm text-slate-600">
                 {request.shippingAddress.line1}, {request.shippingAddress.postalCode} {request.shippingAddress.city},{" "}

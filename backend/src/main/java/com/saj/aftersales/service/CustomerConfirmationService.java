@@ -4,6 +4,7 @@ import com.saj.aftersales.dto.ConfirmActionRequest;
 import com.saj.aftersales.dto.CustomerConfirmationView;
 import com.saj.aftersales.entity.ConfirmationStatus;
 import com.saj.aftersales.entity.CustomerConfirmation;
+import com.saj.aftersales.entity.RequestStatus;
 import com.saj.aftersales.entity.ServiceRequest;
 import com.saj.aftersales.entity.ShippingAddress;
 import com.saj.aftersales.exception.ConflictException;
@@ -121,7 +122,12 @@ public class CustomerConfirmationService {
         confirmation.setDecidedAt(Instant.now());
         customerConfirmationRepository.save(confirmation);
 
-        workflowEngine.customerConfirm(serviceRequest, request.signatureName(), ipAddress);
+        // A Parts request sitting in DRAFT has no PENDING_CUSTOMER_CONFIRMATION gate to clear —
+        // this link is only collecting the address for the Technician to submit later, so there's
+        // no status transition to make (see ServiceRequestService.requestCustomerAddressLink).
+        if (serviceRequest.getStatus() == RequestStatus.PENDING_CUSTOMER_CONFIRMATION) {
+            workflowEngine.customerConfirm(serviceRequest, request.signatureName(), ipAddress);
+        }
 
         ShippingAddress address = shippingAddressRepository.findByServiceRequest_Id(serviceRequest.getId()).orElse(null);
         return mapper.toView(confirmation, address, null);
@@ -139,7 +145,9 @@ public class CustomerConfirmationService {
         confirmation.setDecidedAt(Instant.now());
         customerConfirmationRepository.save(confirmation);
 
-        workflowEngine.customerReject(serviceRequest, reason, ipAddress);
+        if (serviceRequest.getStatus() == RequestStatus.PENDING_CUSTOMER_CONFIRMATION) {
+            workflowEngine.customerReject(serviceRequest, reason, ipAddress);
+        }
 
         ShippingAddress address = shippingAddressRepository.findByServiceRequest_Id(serviceRequest.getId()).orElse(null);
         return mapper.toView(confirmation, address, null);

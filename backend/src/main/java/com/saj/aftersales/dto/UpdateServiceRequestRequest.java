@@ -6,7 +6,8 @@ import java.util.List;
 
 /** Partial update, DRAFT-only (enforced in the service) — every field optional. */
 public record UpdateServiceRequestRequest(
-        Long productId,
+        String itemCode,
+        String model,
         String serialNumber,
         String reason,
         List<@Valid RequestItemInput> items,

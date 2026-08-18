@@ -6,7 +6,7 @@ export interface CustomerConfirmationView {
   requestNumber: string;
   zendeskTicketId: string;
   requestType: RequestTypeCode;
-  productName: string | null;
+  model: string | null;
   status: ConfirmationStatus;
   shippingAddress: ShippingAddress | null;
   /** A previous request under the same ticket already confirmed once, if any — offered as an

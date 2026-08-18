@@ -12,7 +12,7 @@ public record CustomerConfirmationView(
         String requestNumber,
         String zendeskTicketId,
         RequestTypeCode requestType,
-        String productName,
+        String model,
         String status,
         ShippingAddressDto shippingAddress,
         /** A previous request under the same ticket, if one has already been confirmed — offered

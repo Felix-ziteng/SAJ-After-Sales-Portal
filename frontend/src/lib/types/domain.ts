@@ -12,17 +12,7 @@ export type RequestStatus =
   | "CANCELLED"
   | "WAREHOUSE_RECEIVED";
 
-export type CatalogCategory = "INVERTER" | "BATTERY" | "ACCESSORY" | "PART";
-
 export type RejectionSource = "MANAGER" | "CUSTOMER";
-
-export interface CatalogItem {
-  id: number;
-  sku: string;
-  name: string;
-  category: CatalogCategory;
-  active: boolean;
-}
 
 export interface RequestType {
   id: number;
@@ -60,15 +50,15 @@ export interface ShippingAddress {
 
 export interface RequestItem {
   id: number;
-  catalogItemId: number;
-  sku: string;
+  itemCode: string | null;
   name: string;
   quantity: number;
   notes: string | null;
 }
 
 export interface RequestItemInput {
-  catalogItemId: number;
+  itemCode?: string;
+  name: string;
   quantity: number;
   notes?: string;
 }
@@ -80,8 +70,8 @@ export interface ServiceRequest {
   requestType: RequestTypeCode;
   technicianId: number;
   technicianName: string;
-  productId: number | null;
-  productName: string | null;
+  itemCode: string | null;
+  model: string | null;
   serialNumber: string | null;
   reason: string | null;
   status: RequestStatus;
@@ -100,7 +90,8 @@ export interface ServiceRequest {
 export interface CreateServiceRequestRequest {
   zendeskTicketId: string;
   requestType: RequestTypeCode;
-  productId?: number;
+  itemCode?: string;
+  model?: string;
   serialNumber?: string;
   reason?: string;
   items?: RequestItemInput[];
@@ -108,7 +99,8 @@ export interface CreateServiceRequestRequest {
 }
 
 export interface UpdateServiceRequestRequest {
-  productId?: number;
+  itemCode?: string;
+  model?: string;
   serialNumber?: string;
   reason?: string;
   items?: RequestItemInput[];

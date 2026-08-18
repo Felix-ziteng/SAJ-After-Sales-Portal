@@ -16,7 +16,7 @@ public class CustomerConfirmationMapper {
                 sr.getRequestNumber(),
                 sr.getZendeskTicket().getZendeskTicketId(),
                 sr.getRequestType().getCode(),
-                sr.getProduct() != null ? sr.getProduct().getName() : null,
+                sr.getModel(),
                 confirmation.getStatus().name(),
                 address != null ? toAddressDto(address) : null,
                 previous != null ? toAddressDto(previous) : null,

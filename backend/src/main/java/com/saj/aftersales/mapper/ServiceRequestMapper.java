@@ -23,8 +23,8 @@ public class ServiceRequestMapper {
                 sr.getRequestType().getCode(),
                 sr.getTechnician().getId(),
                 sr.getTechnician().getDisplayName(),
-                sr.getProduct() != null ? sr.getProduct().getId() : null,
-                sr.getProduct() != null ? sr.getProduct().getName() : null,
+                sr.getItemCode(),
+                sr.getModel(),
                 sr.getSerialNumber(),
                 sr.getReason(),
                 sr.getStatus(),
@@ -43,9 +43,8 @@ public class ServiceRequestMapper {
     private RequestItemDto toItemDto(RequestItem item) {
         return new RequestItemDto(
                 item.getId(),
-                item.getCatalogItem().getId(),
-                item.getCatalogItem().getSku(),
-                item.getCatalogItem().getName(),
+                item.getItemCode(),
+                item.getName(),
                 item.getQuantity(),
                 item.getNotes());
     }

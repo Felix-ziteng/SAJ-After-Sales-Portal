@@ -2,8 +2,7 @@ package com.saj.aftersales.dto;
 
 public record RequestItemDto(
         Long id,
-        Long catalogItemId,
-        String sku,
+        String itemCode,
         String name,
         int quantity,
         String notes
